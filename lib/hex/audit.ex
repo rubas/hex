@@ -22,6 +22,8 @@ defmodule Hex.Audit do
   """
   @spec run(map(), map() | nil, mode()) :: map()
   def run(lock, policy, mode) do
+    ensure_registry_entries!(lock)
+
     ignore_advisories = Hex.State.fetch!(:ignore_advisories)
     ignore_retirements = Hex.State.fetch!(:ignore_retirements)
 
@@ -66,6 +68,23 @@ defmodule Hex.Audit do
   @spec active_findings?(map()) :: boolean()
   def active_findings?(result) do
     result.denied != [] or result.retired != [] or result.advisories != []
+  end
+
+  # A package without a registry entry would otherwise look like it has no
+  # retirement or advisory, so the audit would pass without checking it.
+  defp ensure_registry_entries!(lock) do
+    missing =
+      for {repo, package} <- Hex.Mix.packages_from_lock(lock),
+          Registry.versions(repo, package) == :error,
+          uniq: true,
+          do: Hex.Utils.package_name(repo, package)
+
+    if missing != [] do
+      Mix.raise(
+        "Could not audit #{Enum.join(missing, ", ")} because the registry entries could " <>
+          "not be fetched and are not cached locally, see above for details"
+      )
+    end
   end
 
   defp denied_packages(_lock, nil), do: []
