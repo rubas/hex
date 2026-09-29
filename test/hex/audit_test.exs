@@ -24,7 +24,20 @@ defmodule Hex.AuditTest do
   test "fails when a locked package can't be fetched and isn't cached" do
     Registry.prefetch([{"hexpm", "mint"}])
 
-    assert_raise Mix.Error, ~r"Could not audit mint because", fn ->
+    assert_raise Mix.Error, ~r"Could not audit mint 1.10.1,", fn ->
+      Hex.Audit.run(@lock, nil, :default)
+    end
+  end
+
+  test "fails when the cached registry entry doesn't include the locked version" do
+    :sys.replace_state(Registry, fn %{ets: tid} = state ->
+      :ets.insert(tid, {{:versions, "hexpm", "mint"}, ["1.9.0"]})
+      state
+    end)
+
+    Registry.prefetch([{"hexpm", "mint"}])
+
+    assert_raise Mix.Error, ~r"Could not audit mint 1.10.1,", fn ->
       Hex.Audit.run(@lock, nil, :default)
     end
   end

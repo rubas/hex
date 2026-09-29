@@ -70,20 +70,28 @@ defmodule Hex.Audit do
     result.denied != [] or result.retired != [] or result.advisories != []
   end
 
-  # A package without a registry entry would otherwise look like it has no
+  # A release without a registry entry would otherwise look like it has no
   # retirement or advisory, so the audit would pass without checking it.
   defp ensure_registry_entries!(lock) do
     missing =
-      for {repo, package} <- Hex.Mix.packages_from_lock(lock),
-          Registry.versions(repo, package) == :error,
+      for {_app, info} <- lock,
+          %{repo: repo, name: package, version: version} <- [Hex.Utils.lock(info)],
+          not registry_entry?(repo, package, version),
           uniq: true,
-          do: Hex.Utils.package_name(repo, package)
+          do: "#{Hex.Utils.package_name(repo, package)} #{version}"
 
     if missing != [] do
       Mix.raise(
-        "Could not audit #{Enum.join(missing, ", ")} because the registry entries could " <>
-          "not be fetched and are not cached locally, see above for details"
+        "Could not audit #{Enum.join(missing, ", ")}, the registry entry for the locked " <>
+          "version could not be fetched and is not cached locally"
       )
+    end
+  end
+
+  defp registry_entry?(repo, package, version) do
+    case Registry.versions(repo, package) do
+      {:ok, versions} -> version in Enum.map(versions, &to_string/1)
+      :error -> false
     end
   end
 
